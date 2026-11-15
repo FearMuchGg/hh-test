@@ -13,7 +13,7 @@
 **Сессия:** `session.v4.jsonl.zstd`
 **Рабочий каталог:** `C:\Users\User\Desktop\candidate-B`
 **Начало сессии:** 15.11.2026 21:18:33
-**Записей в журнале:** 443
+**Записей в журнале:** 619
 
 ---
 
@@ -2606,5 +2606,1198 @@ The file C:\Users\User\Desktop\candidate-B\solution\tools\export_transcript.py h
 {
   "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python tools/export_transcript.py --workspace C:\\Users\\User\\Desktop\\candidate-B --out TRANSCRIPT.md; python -c \"import pathlib; t=pathlib.Path('TRANSCRIPT.md').read_text(encoding='utf-8'); print('строк:', len(t.splitlines())); print('system-reminder:', t.count('system-reminder'))\"",
   "description": "Пересобрать транскрипт и проверить"
+}
+```
+
+**Результат инструмента:**
+
+```text
+Транскрипт: TRANSCRIPT.md (234 030 символов  записей 443)
+�����: 3165
+system-reminder: 8
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Select-String -Path TRANSCRIPT.md -Pattern \"system-reminder\" | Select-Object LineNumber, @{n='Text';e={$_.Line.Substring(0,[Math]::Min(80,$_.Line.Length))}} | Format-Table -AutoSize",
+  "description": "Найти остатки system-reminder в транскрипте"
+}
+```
+
+**Результат инструмента:**
+
+```text
+
+LineNumber Text                                                                            
+---------- ----                                                                            
+         8 - служебные блоки `<system-reminder>` внутри запросов удалены;                  
+      3052 25: <system-reminder>                                                           
+      3071 44: </system-reminder>                                                          
+      3083   "new_string": "# Ключи и пароли: задание разрешает вырезать их из транскрипта.
+      3115   "new_string": "        \"- служебные сообщения платформы (внутренние инструкци
+      3162   "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python tools/e
+
+
+```
+
+**Ассистент:**
+
+Транскрипт собран (443 записи). Пишу `DECISIONS.md` — главный текстовый документ задания.
+
+**Вызов инструмента `write`:**
+
+```json
+{
+  "content": "# Решения и допущения\n\nЗадание: по выгрузке `data/` и дате построить отчёт «сколько выплачено и сколько осталось\nоплатить» по каждой работе и итоги по каждому договору. Формат главного документа — как в\nпримере из задания: что решали, какие были варианты, что выбрали и почему, что изменится,\nесли выбор неверен.\n\nОтчётная дата везде — **10.11.2026**, день учитывается включительно.\n\n---\n\n## 1. Состояние на отчётную дату, а не «на момент выгрузки»\n\n**Что решали.** В `FORMAT.md` сказано: `status` — «статус на момент выгрузки». Выгрузка\nсделана после 12.11 (в ней есть платёж от 12.11 и приёмка от 11.11), а отчёт нужен на 10.11.\nБрать статусы как есть или восстанавливать состояние по датам событий?\n\n**Варианты.** (а) Брать `status`/`paid`/`done` из файлов как есть — просто, но работы и\nплатежи, случившиеся после 10.11, попадут в отчёт. (б) Восстанавливать состояние на дату:\nработа считается принятой, только если `completed_at <= 10.11`; платёж — выплатой, только\nесли `paid_at <= 10.11`.\n\n**Выбрал (б).** Иначе на вопрос «что было на 10.11» мы отвечаем данными на 13.11:\n`W-23` (принята 11.11) выглядела бы выполненной, а `P-8` (оплачен 12.11) — уже выплаченным.\nОба события вынесены в отдельный блок «События после отчётной даты», чтобы не потерялись.\n\n**Если неверно.** Цифры по D-2 изменятся: выплачено станет 95 000, остаток 0, переплата\n5 000; `W-23` будет показана как выполненная. По D-1 ничего не изменится.\n\n## 2. Возвращённые деньги (P-2, 50 000) не считаются выплатой\n\n**Что решали.** Платёж P-2: 50 000 ушли 02.09 и вернулись 10.09 (`refunded`). Учитывать ли\nего в «выплачено»?\n\n**Варианты.** (а) Считать по факту отправки — деньги же уходили. (б) Не считать, если возврат\nслучился до отчётной даты, но учитывать в окне «оплачен — ещё не возвращён». (в) Показывать\nотдельной строкой «возвращено подрядчиком» и не трогать расчёт.\n\n**Выбрал (б) и (в) вместе.** Расчёт идёт по состоянию на дату: пока возврата нет — платёж\nсчитается выплатой; после возврата — нет. Дополнительно в отчёте по договору есть поле\n«Возвращено», чтобы факт возврата был виден. Если бы отчёт строился на 05.09, P-2 вошёл бы\nв выплаты (проверено тестом).\n\n**Если неверно.** Выплачено по D-1 станет 365 000, остаток — 135 000 вместо 185 000; в\nраспределении по работам 50 000 уйдут на следующую непринятую работу. Разница 50 000.\n\n## 3. Платежи в очереди (P-4, 150 000) не считаются выплатой\n\n**Что решали.** P-4 в статусе `queued`: заведён 01.11, `paid_at` пуст. Это выплата?\n\n**Варианты.** (а) Считать, раз платёж заведён. (б) Не считать, но показать справочно.\n(в) Не показывать вообще.\n\n**Выбрал (б).** «Выплачено» — это деньги, которые ушли подрядчику. Пока `paid_at` пуст, деньги\nу нас, поэтому в расчёт они не идут, но бухгалтеру важно знать, что 150 000 уже в очереди:\nдля этого есть колонка «В очереди».\n\n**Если неверно.** Если считать очередь выплатой: по D-1 выплачено 465 000, остаток 35 000\nвместо 185 000 — ошибка на 150 000, поэтому решение вынесено отдельно и подписано в отчёте.\n\n## 4. Непривязанные платежи распределяются по работам по порядку приёмки (ФИФО)\n\n**Что решали.** Главный вопрос задания: платежи по договору не привязаны к работам, а\nбухгалтеру нужно понимать, «за что мы уже рассчитались». Как разложить общие платежи\n(P-1 300 000, P-5 45 000, P-6 25 000, P-7 5 000) по работам?\n\n**Варианты.**\n(а) Не распределять: показывать только итоги по договору, по работам — «выплачено: нет данных».\n(б) Пропорционально ценам работ: 315 000 на 600 000 — это 52,5 % каждой работы.\n(в) ФИФО по дате приёмки: сначала закрываются более ранние принятые работы, остаток — аванс\nна работы, которые ещё не приняты.\n(г) Разбирать по тексту назначения платежа вручную.\n\n**Выбрал (в).** Это единственный вариант, который отвечает на вопрос «за что рассчитались»:\nв отчёте видно, что W-11, W-12 и W-14 закрыты полностью, а деньги, ушедшие вперёд, висят на\nнепринятых работах (W-15 — 15 000). Вариант (б) дал бы «каждая работа оплачена наполовину» —\nдля сверки с подрядчиком это бесполезно. Вариант (г) не масштабируется и в данных нет\nдостаточных подсказок (назначения вида «Аванс 50%», «Остаток»).\n\nПорядок внутри ФИФО: принятые работы — по дате приёмки, затем ожидающие приёмки, затем\nзапланированные; при равенстве — по номеру работы. Сумма распределения всегда равна сумме\nфактически выплаченных платежей, остаток выносится в «не распределено».\n\n**Если неверно.** Итоги по договорам не поменяются (они считаются по платежам), изменится\nтолько распределение по работам. Например, при пропорциональном варианте у W-11 было бы\nвыплачено 52 500 вместо 100 000, остаток 47 500 вместо 0. Сверка «за что рассчитались»\nстанет неверной, хотя общий остаток по договору останется тем же.\n\n## 5. Прямые платежи идут в свою работу, даже если общий аванс был раньше\n\n**Что решали.** P-3 (15 000, `work_id = W-14`) оплачен 25.10, а общий аванс P-1 — 01.09.\nЧто главнее: хронология или явная привязка?\n\n**Варианты.** (а) Строгая хронология: P-1 распределяется первым и закрывает W-11, W-12, W-14\nцеликом, тогда P-3 — переплата по W-14. (б) Прямая привязка имеет приоритет: P-3 закрывает\nчасть W-14, а общий аванс распределяется на остаток потребности.\n\n**Выбрал (б).** `work_id` — это явное указание учёта, его нельзя перебивать порядком дат.\nПри (а) по W-14 получилось бы 115 000 при цене 100 000 (переплата 15 000), а W-15 осталась бы\nбез аванса — то есть отчёт показал бы переплату там, где её нет.\n\n**Если неверно.** W-14: выплачено 115 000, переплата 15 000; W-15: 0, остаток 100 000;\nитог по договору не изменится (315 000).\n\n## 6. Платёж P-3 «Материалы для съёмки» — оплата работы, а не возмещение расходов\n\n**Что решали.** У P-3 назначение «Материалы для съёмки» и привязка к W-14. Это оплата в счёт\nцены работы или компенсация расходов сверх цены?\n\n**Варианты.** (а) Оплата работы в счёт цены 100 000. (б) Возмещение расходов сверх цены:\nтогда 15 000 — отдельная статья, а цена работы закрывается только авансом.\n\n**Выбрал (а).** В `FORMAT.md` колонка `work_id` описана как «работа, к которой привязан\nплатёж», то есть платёж относится к расчётам за работу. Отдельного признака «возмещение\nрасходов» в формате нет.\n\n**Если неверно.** К оплате по D-1 станет 200 000 вместо 185 000, по W-14 выплачено 85 000 и\nостаток 15 000; 15 000 материалов придётся вести отдельной статьёй. Итог «выплачено» по\nдоговору не изменится.\n\n## 7. Отменённая работа W-13 исключена из «к оплате»\n\n**Что решали.** W-13 отменена 12.10, цена 100 000 входит в сумму договора 600 000.\nПоказывать ли её в остатке к оплате?\n\n**Варианты.** (а) Считать по сумме договора: остаток = 600 000 − 315 000 = 285 000.\n(б) Исключить отменённую работу: к оплате 500 000, остаток 185 000. (в) Исключить, но\nпоказать все три числа (сумма договора, отменено, к оплате).\n\n**Выбрал (в).** Отменённую работу оплачивать не за что, но бухгалтер должен видеть, почему\nостаток по договору меньше «суммы договора минус выплачено». Поэтому в отчёте три колонки:\n«Сумма договора», «Отменено», «К оплате».\n\n**Если неверно.** Если отмена не окончательная и работу восстановят, к оплате станет\n600 000, остаток 285 000, а работа W-13 появится в списке с остатком 100 000.\n\n## 8. Работа W-23 (принята 11.11) показана как «не принята на дату»\n\n**Что решали.** В выгрузке у W-23 `status = done`, `completed_at = 11.11.2026`. На 10.11 она\nещё не принята. Как её показывать?\n\n**Варианты.** (а) Считать выполненной, как в выгрузке. (б) Показать «не принята на дату» с\nпометкой и всё равно учесть цену в «к оплате».\n\n**Выбрал (б).** Цена работы — обязательство договора, она входит в «к оплате» независимо от\nприёмки; но статус и блок «События после отчётной даты» должны честно говорить, что на 10.11\nработа не принята. Деньги, ушедшие на неё (25 000), показаны как аванс сверх принятого.\n\n**Если неверно.** Поменяется только статус и разбивка «принято / не принято». Остаток по\nдоговору (15 000) и общий итог не изменятся.\n\n## 9. Аванс сверх принятого показан отдельной колонкой\n\n**Что решали.** Как объяснить, что по принятым работам долга нет, а «осталось оплатить» — есть?\n\n**Варианты.** (а) Не показывать. (б) Показать отдельным блоком «долг по принятым» и «аванс\nсверх принятого».\n\n**Выбрал (б).** Иначе цифра «осталось 185 000» выглядит как просроченный долг, хотя это\nбудущие работы. В отчёте: D-1 — долг по принятым 0, аванс 15 000; D-2 — долг 0, аванс 25 000.\n\n**Если неверно.** Содержание отчёта не изменится, только читаемость: бухгалтер может принять\nаванс за долг.\n\n## 10. Переплата не «схлопывается» в ноль\n\n**Что решали.** Что делать, если выплачено больше, чем к оплате.\n\n**Варианты.** (а) Показывать остаток отрицательным числом. (б) Ограничить нулём и показать\nпереплату отдельной колонкой.\n\n**Выбрал (б).** Минус в колонке «осталось оплатить» читается как ошибка. На 10.11 переплат нет;\nпосле 12.11 по D-2 появится 5 000 — это видно в блоке «События после отчётной даты».\n\n**Если неверно.** На 10.11 ничего не изменится; для будущих дат изменится вид колонки.\n\n## 11. Деньги — только Decimal, округление до копейки\n\n**Что решали.** Чем считать деньги.\n\n**Варианты.** (а) `float`. (б) `Decimal` с квантованием до 0.01 и `ROUND_HALF_UP`.\n(в) Целые копейки.\n\n**Выбрал (б).** `float` на копейках даёт ошибки (`0.1 + 0.2`), а задание требует точности до\nкопейки. `ROUND_HALF_UP` — привычное бухгалтерское округление. Есть тест: три работы по\n33.33 и платёж 100.00 дают ровно 99.99 распределения и 0.01 нераспределённого остатка.\n\n**Если неверно.** На копейках возможно расхождение до 0.01 на операцию; проверки в программе\n(сумма по работам = сумма платежей) начнут падать — это будет видно сразу.\n\n## 12. Порядок работ без даты приёмки — по номеру работы\n\n**Что решали.** W-15 и W-16 обе запланированы, дат нет. Кому достанется остаток аванса?\n\n**Варианты.** (а) По номеру работы (W-15, потом W-16). (б) По порядку строк в файле.\n(в) По названию.\n\n**Выбрал (а).** Номер стабилен и не зависит от перестановки строк в выгрузке; порядок строк\nможет измениться при следующей выгрузке, и отчёт «прыгал» бы.\n\n**Если неверно.** 15 000 аванса уйдут W-16 вместо W-15; итоги по договору не изменятся.\n\n## 13. Противоречивые данные останавливают расчёт, расхождения сумм — предупреждают\n\n**Что решали.** Что делать, если в выгрузке противоречие: неизвестный статус, `paid` без\nдаты оплаты, платёж на работу другого договора, сумма цен работ не равна сумме договора.\n\n**Варианты.** (а) Чинить на лету: подставлять разумные значения. (б) Всегда падать.\n(в) Падать на противоречиях, которые делают расчёт неоднозначным, и предупреждать о\nрасхождениях, которые расчёт не ломают.\n\n**Выбрал (в).** Неизвестный статус или `paid` без даты — это невозможность посчитать;\nпрограмма завершается с кодом 2 и указывает файл, строку и колонку. Расхождение суммы\nдоговора и суммы работ — повод предупредить, но не повод не считать: в отчёте будут видны\nобе цифры, а расчёт идёт по ценам работ.\n\n**Если неверно.** Там, где можно было бы «догадаться», программа откажется строить отчёт.\nЭто осознанный выбор в пользу явной ошибки вместо тихо неверной цифры.\n\n## 14. Формат отчёта: консоль, Markdown, CSV, JSON\n\n**Что решали.** В каком виде отдавать отчёт.\n\n**Варианты.** (а) Только консоль. (б) CSV. (в) Несколько форматов сразу.\n\n**Выбрал (в).** Markdown — переслать и прочитать; CSV (`;` и запятая в дробях, UTF-8 с BOM) —\nоткрыть в Excel без настроек; JSON — отдать в другую систему, деньги строками, чтобы не\nпотерять копейки; консоль — быстрый просмотр. Все форматы строятся из одной модели данных,\nпоэтому не могут разойтись между собой.\n\n**Если неверно.** Поменяется только вывод, расчёт останется прежним.\n\n## 15. Валюта и НДС\n\n**Что решали.** Выделять ли НДС, есть ли мультивалютность.\n\n**Варианты.** (а) Считать, что суммы с НДС. (б) Считать, что без НДС. (в) Не трогать НДС,\nпоказывать суммы как в выгрузке.\n\n**Выбрал (в).** В формате нет ни ставки, ни признака НДС и валюты; все суммы — рубли «как\nесть». Любая реконструкция НДС была бы выдумкой.\n\n**Если неверно.** Если суммы в договоре с НДС, а бухгалтерии нужна база без НДС, придётся\nдобавить пересчёт: отчёт этого не делает.\n\n---\n\n## Проверка решений на данных\n\nСверка, которая есть в каждом отчёте (раздел «Проверки»):\n\n* по каждому договору: «выплачено = распределено по работам + не распределено»;\n* по каждому договору: «к оплате = принято + не принято»;\n* по каждой работе: «выплачено + осталось = цена» (кроме отменённых и переплат);\n* итоги по договорам равны суммам строк, сумма по работам сходится с суммой платежей.\n\nДля 10.11.2026: выплачено 390 000, осталось оплатить 200 000, в очереди 150 000, переплат нет.\n\n## Что осталось за рамками\n\n* Интерфейс, база данных и docker — по заданию не нужны.\n* Частичные акты и авансовые счета-фактуры в данных не встречаются, поэтому не моделируются.\n* Курсы валют и мультивалютность не поддерживаются: в формате одна валюта — рубли.\n* Отчёт не «ремонтирует» выгрузку: если данные противоречат формату, он останавливается.\n",
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\DECISIONS.md"
+}
+```
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\DECISIONS.md</path>
+<type>file</type>
+<content>
+Created file
+</content>
+```
+
+## Пользователь
+
+Time sampled while preparing turn 1, step 64: 2026-11-15T21:40:16+03:00[Europe/Moscow]
+Browser time zone for this request: Europe/Moscow. Interpret otherwise-unqualified dates and times in this zone.
+Elapsed since the preceding step context: 11m 12s.
+
+**Вызов инструмента `write`:**
+
+```json
+{
+  "content": "# Записка бухгалтеру\n\nЗдравствуйте! Отчёт на 10.11.2026 лежит в `out/report_2026-11-10.md` — его можно читать прямо\nв браузере или в Markdown-редакторе; рядом лежат таблицы в CSV, они открываются в Excel.\n\n1. Сначала идёт таблица работ: цена, сколько выплачено, сколько осталось. Потом — итоги по\n   каждому договору: сумма договора, отменённые работы, к оплате, выплачено, остаток.\n2. «Выплачено» — только те деньги, которые ушли подрядчику и на 10.11 не вернулись. Платёж\n   P-2 (50 000) вернули 10.09, платёж P-4 (150 000) ещё в очереди — в расчёт они не входят,\n   но показаны отдельными строками, чтобы вы их видели.\n3. Платежи без привязки к работе я разложил по порядку приёмки: сначала закрываются более\n   ранние принятые работы, остаток считается авансом на работы, которые ещё не приняли.\n   В колонке «Источники» видно, из какого платежа какая сумма ушла на работу.\n4. Долга по уже принятым работам нет. Осталось оплатить 185 000 по договору D-1 и 15 000\n   по D-2 — но это работы, которых на 10.11 ещё не приняли (W-15, W-16 и W-23).\n5. Подтвердите, пожалуйста, две вещи: работа W-13 отменена — её 100 000 не оплачиваем?\n   И платёж P-3 «Материалы для съёмки» (15 000) — это оплата работы W-14, а не возмещение\n   расходов сверх её цены?\n6. Обратите внимание: платёж P-8 на 20 000 от 12.11 закроет остаток 15 000 по D-2 и даст\n   переплату 5 000 — проверьте, не лишний ли он. А платёж P-4 на 150 000 при остатке 185 000\n   оставит 35 000 к оплате после себя.\n\nЕсли что-то в раскладке по работам не сходится с вашим пониманием договора — скажите, какое\nправило применять (например, деньги за конкретную работу), и я пересчитаю: логика\nраспределения вынесена в отдельное место и меняется без переделки отчёта.\n",
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\NOTES_TO_ACCOUNTANT.md"
+}
+```
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\NOTES_TO_ACCOUNTANT.md</path>
+<type>file</type>
+<content>
+Created file
+</content>
+```
+
+**Вызов инструмента `write`:**
+
+````json
+{
+  "content": "# Отчёт «аванс по договору»\n\nПрограмма читает выгрузку из учёта (`contracts.csv`, `works.csv`, `payments.csv`) и строит\nотчёт на заданную дату: по каждой работе — цена, сколько выплачено и сколько осталось\nоплатить; по каждому договору — итоги. Деньги считаются в `Decimal` до копейки.\n\nНикаких внешних зависимостей: только стандартная библиотека Python.\n\n---\n\n## Как запустить\n\nНужен Python 3.10+ (проверено на 3.14). Из папки `solution`:\n\n```bash\n# отчёт на 10.11.2026 в консоль\npython report.py --date 2026-11-10\n\n# все файлы отчёта в папку out\npython report.py --date 2026-11-10 --format all --out out\n\n# конкретный формат\npython report.py --date 2026-11-10 --format md  --out out\npython report.py --date 2026-11-10 --format csv --out out\npython report.py --date 2026-11-10 --format json --out out\n\n# другая папка с выгрузкой\npython report.py --data ..\\data --date 2026-11-10\n```\n\nЕсли `--date` не указать, берётся сегодняшняя дата; для воспроизводимости её лучше указывать\nявно. По умолчанию данные берутся из `../data` относительно папки решения.\n\n### Параметры\n\n| Параметр | Что делает |\n|---|---|\n| `--data DIR` | каталог с тремя CSV (по умолчанию `../data`) |\n| `--date`, `--as-of ГГГГ-ММ-ДД` | отчётная дата, день включительно |\n| `--format console\\|md\\|csv\\|json\\|all` | куда выводить (по умолчанию `console`) |\n| `--out DIR` | каталог для файлов (по умолчанию `out`) |\n| `--csv-delimiter` | разделитель CSV, по умолчанию `;` (так открывает Excel) |\n| `--csv-dot` | писать в CSV точку вместо запятой в дробях |\n\n### Коды возврата\n\n| Код | Значение |\n|---|---|\n| `0` | отчёт построен (предупреждения не мешают) |\n| `2` | данные противоречат формату — отчёт не строился (в сообщении файл, строка, колонка) |\n| `3` | нарушен внутренний инвариант расчёта (дефект программы) |\n| `4` | не удалось записать файлы |\n\n---\n\n## Что получается\n\n`--format all` пишет в `out/`:\n\n| Файл | Для чего |\n|---|---|\n| `report_2026-11-10.md` | читаемый отчёт: таблицы работ и договоров, платежи, сверки |\n| `works_2026-11-10.csv` | работы: цена, выплачено (прямое / из платежей), остаток, источники |\n| `contracts_2026-11-10.csv` | договоры: сумма, отменено, к оплате, выплачено, остаток, переплата, очередь |\n| `payments_2026-11-10.csv` | все платежи с пометкой «учтён / не учтён» и причиной |\n| `report_2026-11-10.json` | тот же отчёт для машинной обработки, деньги строками |\n\nГотовый отчёт на 10.11.2026 уже лежит в [`out/`](out/report_2026-11-10.md).\n\n---\n\n## Как читать отчёт\n\n* **Выплачено** — деньги, которые ушли подрядчику и на отчётную дату не вернулись.\n  Возвраты (P-2) и платежи в очереди (P-4) сюда не входят; платежи позже отчётной даты\n  (P-8) тоже не входят и вынесены в блок «События после отчётной даты».\n* **Осталось оплатить** = «к оплате» − «выплачено». «К оплате» — сумма цен работ минус\n  отменённые работы.\n* **Аванс сверх принятого** — сколько денег ушло вперёд приёмки: по принятым работам долга нет,\n  весь остаток относится к работам, которых на дату ещё не приняли.\n* **Источники выплат** — из каких платежей сложилась сумма по работе. Непривязанные платежи\n  разложены по порядку приёмки (ФИФО), прямые (`work_id`) идут в свою работу.\n\nПодробно все допущения — в [DECISIONS.md](DECISIONS.md), коротко для бухгалтера —\nв [NOTES_TO_ACCOUNTANT.md](NOTES_TO_ACCOUNTANT.md).\n\n---\n\n## Тесты\n\n```bash\npython -m unittest discover -s tests -v\n```\n\n80 тестов: разбор сумм и дат, проверки загрузки (битые статусы, чужие ссылки, возвраты),\nрасчёт на реальной выгрузке с эталонными цифрами, граничные случаи (переплата, пустой\nдоговор, копейки), CLI (коды возврата, форматы, побайтовая повторяемость).\n\nКлючевой тест — `tests/test_engine.py::RealDataTests`: цифры на 10.11.2026 посчитаны вручную\nпо строкам CSV и служат эталоном.\n\n---\n\n## Структура\n\n```\nsolution/\n├── report.py                  точка входа CLI\n├── advance_report/\n│   ├── formatting.py          деньги и даты: разбор, округление, печать\n│   ├── loading.py             чтение и проверка CSV\n│   ├── engine.py              состояние на дату, распределение выплат, итоги\n│   ├── render.py              консоль, Markdown, CSV, JSON\n│   └── cli.py                 аргументы, коды возврата\n├── tests/                     80 тестов на unittest\n├── out/                       готовый отчёт на 10.11.2026\n├── tools/export_transcript.py экспорт журнала работы в транскрипт\n├── DECISIONS.md               решения и допущения\n├── NOTES_TO_ACCOUNTANT.md     записка бухгалтеру\n└── TRANSCRIPT.md              транскрипт работы\n```\n\n## Ограничения\n\n* Одна валюта (рубли), НДС не выделяется — в выгрузке нет ни ставки, ни признака.\n* Частичные акты и авансовые счёта не моделируются: формат их не содержит.\n* Данные, противоречащие формату, не «чинятся»: программа останавливается с понятным\n  сообщением, чтобы не выдать неверную цифру.\n* Распределение непривязанных платежей — допущение (ФИФО по дате приёмки), его стоит\n  подтвердить у бухгалтера; в коде это одно место (`engine._allocate`) и меняется отдельно.\n",
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\README.md"
+}
+````
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\README.md</path>
+<type>file</type>
+<content>
+Created file
+</content>
+```
+
+**Ассистент:**
+
+Документы готовы. Проверяю репозиторий, видимость и git-авторизацию перед отправкой.
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "gh repo view FearMuchGg/hh-test --json name,visibility,defaultBranchRef,isEmpty 2>&1; echo \"---\"; git config --global user.name; git config --global user.email; echo \"---\"; $env:GIT_TERMINAL_PROMPT=0; git -c credential.helper=\"!gh auth git-credential\" ls-remote https://github.com/FearMuchGg/hh-test 2>&1 | Select-Object -First 4",
+  "description": "Проверить репозиторий и доступ"
+}
+```
+
+**Результат инструмента:**
+
+```text
+{"defaultBranchRef":{"name":""},"isEmpty":true,"name":"hh-test","visibility":"PUBLIC"}
+---
+FearMuchGg
+momotkovivan@icloud.com
+---
+[stderr]
+git : fatal: unable to access 'https://github.com/FearMuchGg/hh-test/': schannel: AcquireCredentialsHandle failed: SEC_
+E_NO_CREDENTIALS (0x8009030e) - � ������ ������������ ����������� ������� ������
+строка:1 знак:330
++ ... L_PROMPT=0; git -c credential.helper="!gh auth git-credential" ls-rem ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (fatal: unable t... ������� ������:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[exit code: 1]
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B; $env:GIT_TERMINAL_PROMPT=0\ngit -c http.sslBackend=openssl -c credential.helper=\"!gh auth git-credential\" ls-remote https://github.com/FearMuchGg/hh-test 2>&1 | Select-Object -First 5\necho \"=== API проверка:\"\ngh api repos/FearMuchGg/hh-test --jq '.full_name + \" | \" + .visibility + \" | size=\" + (.size|tostring)' 2>&1",
+  "description": "Проверить git через OpenSSL и доступ к API"
+}
+```
+
+**Результат инструмента:**
+
+```text
+=== API проверка:
+[stderr]
+gh : accepts 1 arg(s), received 5
+строка:4 знак:1
++ gh api repos/FearMuchGg/hh-test --jq '.full_name + " | " + .visibilit ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (accepts 1 arg(s), received 5:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[exit code: 1]
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B; $env:GIT_TERMINAL_PROMPT=0\nWrite-Output \"--- openssl backend:\"; git -c http.sslBackend=openssl -c credential.helper=\"!gh auth git-credential\" ls-remote https://github.com/FearMuchGg/hh-test; Write-Output \"exit=$LASTEXITCODE\"\nWrite-Output \"--- gh api:\"; gh api repos/FearMuchGg/hh-test 2>&1 | Select-Object -First 3",
+  "description": "Проверить transport git и API"
+}
+```
+
+**Результат инструмента:**
+
+```text
+--- openssl backend:
+exit=0
+--- gh api:
+{"id":1459119924,"node_id":"R_kgDOVvhnNA","name":"hh-test","full_name":"FearMuchGg/hh-test","private":false,"owner":{"login":"FearMuchGg","id":242446657,"node_id":"U_kgDODnNxQQ","avatar_url":"https://avatars.githubusercontent.com/u/242446657?v=4","gravatar_id":"","url":"https://api.github.com/users/FearMuchGg","html_url":"https://github.com/FearMuchGg","followers_url":"https://api.github.com/users/FearMuchGg/followers","following_url":"https://api.github.com/users/FearMuchGg/following{/other_user}","gists_url":"https://api.github.com/users/FearMuchGg/gists{/gist_id}","starred_url":"https://api.github.com/users/FearMuchGg/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/FearMuchGg/subscriptions","organizations_url":"https://api.github.com/users/FearMuchGg/orgs","repos_url":"https://api.github.com/users/FearMuchGg/repos","events_url":"https://api.github.com/users/FearMuchGg/events{/privacy}","received_events_url":"https://api.github.com/users/FearMuchGg/received_events","type":"User","user_view_type":"public","site_admin":false},"html_url":"https://github.com/FearMuchGg/hh-test","description":null,"fork":false,"url":"https://api.github.com/repos/FearMuchGg/hh-test","forks_url":"https://api.github.com/repos/FearMuchGg/hh-test/forks","keys_url":"https://api.github.com/repos/FearMuchGg/hh-test/keys{/key_id}","collaborators_url":"https://api.github.com/repos/FearMuchGg/hh-test/collaborators{/collaborator}","teams_url":"https://api.github.com/repos/FearMuchGg/hh-test/teams","hooks_url":"https://api.github.com/repos/FearMuchGg/hh-test/hooks","issue_events_url":"https://api.github.com/repos/FearMuchGg/hh-test/issues/events{/number}","events_url":"https://api.github.com/repos/FearMuchGg/hh-test/events","assignees_url":"https://api.github.com/repos/FearMuchGg/hh-test/assignees{/user}","branches_url":"https://api.github.com/repos/FearMuchGg/hh-test/branches{/branch}","tags_url":"https://api.github.com/repos/FearMuchGg/hh-test/tags","blobs_url":"https://api.github.com/repos/FearMuchGg/hh-test/git/blobs{/sha}","git_tags_url":"https://api.github.com/repos/FearMuchGg/hh-test/git/tags{/sha}","git_refs_url":"https://api.github.com/repos/FearMuchGg/hh-test/git/refs{/sha}","trees_url":"https://api.github.com/repos/FearMuchGg/hh-test/git/trees{/sha}","statuses_url":"https://api.github.com/repos/FearMuchGg/hh-test/statuses/{sha}","languages_url":"https://api.github.com/repos/FearMuchGg/hh-test/languages","stargazers_url":"https://api.github.com/repos/FearMuchGg/hh-test/stargazers","contributors_url":"https://api.github.com/repos/FearMuchGg/hh-test/contributors","subscribers_url":"https://api.github.com/repos/FearMuchGg/hh-test/subscribers","subscription_url":"https://api.github.com/repos/FearMuchGg/hh-test/subscription","commits_url":"https://api.github.com/repos/FearMuchGg/hh-test/commits{/sha}","git_commits_url":"https://api.github.com/repos/FearMuchGg/hh-test/git/commits{/sha}","comments_url":"https://api.github.com/repos/FearMuchGg/hh-test/comments{/number}","issue_comment_url":"https://api.github.com/repos/FearMuchGg/hh-test/issues/comments{/number}","contents_url":"https://api.github.com/repos/FearMuchGg/hh-test/contents/{+path}","compare_url":"https://api.github.com/repos/FearMuchGg/hh-test/compare/{base}...{head}","merges_url":"https://api.github.com/repos/FearMuchGg/hh-test/merges","archive_url":"https://api.github.com/repos/FearMuchGg/hh-test/{archive_format}{/ref}","downloads_url":"https://api.github.com/repos/FearMuchGg/hh-test/downloads","issues_url":"https://api.github.com/repos/FearMuchGg/hh-test/issues{/number}","pulls_url":"https://api.github.com/repos/FearMuchGg/hh-test/pulls{/number}","milestones_url":"https://api.github.com/repos/FearMuchGg/hh-test/milestones{/number}","notifications_url":"https://api.github.com/repos/FearMuchGg/hh-test/notifications{?since,all,participating}","labels_url":"https://api.github.com/repos/FearMuchGg/hh-test/labels{/name}","releases_url":"https://api.github.com/repos/FearMuchGg/hh-test/releases{/id}","deployments_url":"https://api.github.com/repos/FearMuchGg/hh-test/deployments","created_at":"2026-11-15T18:36:01Z","updated_at":"2026-11-15T18:36:03Z","pushed_at":"2026-11-15T18:36:03Z","git_url":"git://github.com/FearMuchGg/hh-test.git","ssh_url":"git@github.com:FearMuchGg/hh-test.git","clone_url":"https://github.com/FearMuchGg/hh-test.git","svn_url":"https://github.com/FearMuchGg/hh-test","homepage":null,"size":0,"stargazers_count":0,"watchers_count":0,"language":null,"has_issues":true,"has_projects":true,"has_downloads":false,"has_wiki":true,"has_pages":false,"has_discussions":false,"forks_count":0,"mirror_url":null,"archived":false,"disabled":false,"open_issues_count":0,"license":null,"allow_forking":true,"is_template":false,"web_commit_signoff_required":false,"has_pull_requests":true,"pull_request_creation_policy":"all","topics":[],"visibility":"public","forks":0,"open_issues":0,"watchers":0,"default_branch":"main","permissions":{"admin":true,"maintain":true,"push":true,"triage":true,"pull":true},"temp_clone_token":"","allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,"allow_auto_merge":false,"delete_branch_on_merge":false,"allow_update_branch":false,"use_squash_pr_title_as_default":false,"squash_merge_commit_message":"COMMIT_MESSAGES","squash_merge_commit_title":"COMMIT_OR_PR_TITLE","merge_commit_message":"PR_TITLE","merge_commit_title":"MERGE_MESSAGE","security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"},"dependabot_security_updates":{"status":"disabled"},"secret_scanning_non_provider_patterns":{"status":"disabled"},"secret_scanning_validity_checks":{"status":"disabled"}},"network_count":0,"subscribers_count":0}
+```
+
+**Ассистент:**
+
+Прежде чем пушить, нужно ваше решение: **репозиторий `FearMuchGg/hh-test` сейчас публичный**, а в задании прямо сказано «приватный репозиторий» и «задание, данные и решение не публикуйте».
+
+**Вызов инструмента `ask_user_question`:**
+
+```json
+{
+  "questions": [
+    {
+      "id": "repo_visibility",
+      "header": "Публичность репозитория",
+      "question": "Репозиторий FearMuchGg/hh-test публичный и пустой. Куда и как пушить решение?",
+      "options": [
+        {
+          "label": "Сделать hh-test приватным и запушить туда (рекомендую)",
+          "description": "Соответствует требованию задания: одна команда gh repo edit --visibility private, потом push. Ссылку можно отдавать работодателю."
+        },
+        {
+          "label": "Создать новый приватный репозиторий и запушить в него",
+          "description": "hh-test остаётся как есть; создам, например, FearMuchGg/hh-test-solution (private) и дам ссылку."
+        },
+        {
+          "label": "Пушить в публичный hh-test как есть",
+          "description": "Нарушает пункт задания «не публикуйте»: решение и данные тестового задания станут видны всем."
+        },
+        {
+          "label": "Не пушить, отдать только локальную папку",
+          "description": "Оставлю всё в solution/ и перечислю, что закоммичено локально; вы зальёте сами."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Результат инструмента:**
+
+```text
+{"answers":[{"id":"repo_visibility","selected":["Пушить в публичный hh-test как есть"]}]}
+```
+
+**Ассистент:**
+
+Принято — пушу в публичный `hh-test` как есть (задание просило приватный, это ваш выбор; отмечу в итоговом ответе). Перед пушем — независимая проверка расчётов и уборка мусора.
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Get-ChildItem -Force | Select-Object Mode,Name | Format-Table -AutoSize; echo \"--- .tmp-tests:\"; Get-ChildItem .tmp-tests -Force -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count; echo \"--- размеры:\"; Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\.tmp-tests' } | Sort-Object Length -Descending | Select-Object -First 8 @{n='KB';e={[math]::Round($_.Length/1KB,1)}}, FullName",
+  "description": "Проверить состав папки решения"
+}
+```
+
+**Результат инструмента:**
+
+```text
+
+Mode   Name                  
+----   ----                  
+d----- .tmp-tests            
+d----- advance_report        
+d----- out                   
+d----- tests                 
+d----- tools                 
+-a---- DECISIONS.md          
+-a---- NOTES_TO_ACCOUNTANT.md
+-a---- README.md             
+-a---- report.py             
+-a---- TRANSCRIPT.md         
+
+
+--- .tmp-tests:
+
+Count
+-----
+   34
+--- размеры:
+     
+     
+     
+     
+     
+     
+     
+     
+
+
+[stderr]
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-5hsutyh1".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-5hsutyh1:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-ayxy4vbu".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-ayxy4vbu:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-d1ogmco6".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-d1ogmco6:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-dx4d2xvd".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-dx4d2xvd:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-kscef0m4".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-kscef0m4:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-ru_aol9i".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-ru_aol9i:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-tb4zlskg".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-tb4zlskg:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-wp0wpfso".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-wp0wpfso:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-zdjiw9vf".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-zdjiw9vf:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\cli-zz7rpb26".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...ts\cli-zz7rpb26:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-0mfvexng".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-0mfvexng:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-27fmbbo3".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-27fmbbo3:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-4st0cgln".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-4st0cgln:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-4yq73ckt".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-4yq73ckt:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-5wc_h49a".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-5wc_h49a:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-ab909tk0".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-ab909tk0:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-bcb37lwl".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-bcb37lwl:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-e5r8o2bw".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-e5r8o2bw:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-emgqzp5p".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-emgqzp5p:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-f0vy3kfv".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-f0vy3kfv:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-gajqvmdf".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-gajqvmdf:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-h9bk7iis".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-h9bk7iis:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-hl8a11hf".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-hl8a11hf:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-jorc3ylt".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-jorc3ylt:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-km_91jvx".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-km_91jvx:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-pvd04wgv".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-pvd04wgv:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-sixi0ru5".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-sixi0ru5:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-t0iqz1mp".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-t0iqz1mp:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-t311sarr".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-t311sarr:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-unh2hipx".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-unh2hipx:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-v20fhekv".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-v20fhekv:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-waax8gs8".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-waax8gs8:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\loading-wzooewfx".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...oading-wzooewfx:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+Get-ChildItem : Отказано в доступе по пути "C:\Users\User\Desktop\candidate-B\solution\.tmp-tests\probe-y_knq_o0".
+строка:1 знак:396
++ ... ject Count; echo "--- размеры:"; Get-ChildItem -Recurse -File | Where ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\User\D...\probe-y_knq_o0:String) [Get-ChildItem], Unauthoriz 
+   edAccessException
+    + FullyQualifiedErrorId : DirUnauthorizedAccessError,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 
+[exit code: 1]
+```
+
+**Вызов инструмента `subagent`:**
+
+```json
+{
+  "description": "Независимая проверка расчётов",
+  "prompt": "Ты — независимый ревьюер финансового расчёта. Задача: пересчитать вручную по исходным CSV и сверить с тем, что выдаёт программа. НИЧЕГО НЕ МЕНЯЙ в файлах — только читай и считай.\n\nИсходные данные (читай их сам, не верь моим словам):\n- C:\\Users\\User\\Desktop\\candidate-B\\data\\contracts.csv\n- C:\\Users\\User\\Desktop\\candidate-B\\data\\works.csv\n- C:\\Users\\User\\Desktop\\candidate-B\\data\\payments.csv\n- C:\\Users\\User\\Desktop\\candidate-B\\data\\FORMAT.md (описание колонок и статусов)\n\nОтчётная дата: 10.11.2026, день включительно.\n\nПравила, по которым построен отчёт (проверь, что они применены корректно и непротиворечиво):\n1. Состояние восстанавливается на дату: работа считается принятой, если completed_at <= 10.11.2026; отменённой, если cancelled_at <= 10.11.2026.\n2. Выплатой считается платёж, у которого paid_at <= 10.11.2026 и который не был возвращён до этой даты (refunded_at > 10.11 или отсутствует). Платежи queued не считаются.\n3. Прямые платежи (work_id заполнен) относятся на свою работу.\n4. Непривязанные платежи (work_id пуст) распределяются по работам ФИО: сначала принятые работы в порядке даты приёмки, затем ожидающие приёмки, затем запланированные; внутри группы — по номеру работы. Отменённые работы не получают денег.\n5. «К оплате» по договору = сумма цен работ минус отменённые работы. «Осталось оплатить» = max(0, к оплате − выплачено).\n\nЧто нужно сделать:\n1. Самостоятельно посчитай по CSV: выплачено и остаток по каждой работе; выплачено, к оплате, остаток по каждому договору; итоги.\n2. Запусти программу и сравни: `cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python report.py --date 2026-11-10 --format json --out .review-out` затем прочитай `.review-out\\report_2026-11-10.json`. (Каталог .review-out потом можешь оставить, его удалю я.)\n3. Проверь арифметику каждой строки JSON: price/paid/remaining, суммы по договорам, итоги, что paid_total = сумма по работам + unallocated.\n4. Отдельно проверь краевые случаи: платёж P-2 (возврат), P-4 (очередь), P-8 (позже отчётной даты), работа W-23 (принята 11.11), W-13 (отменена).\n5. Проверь, нет ли в отчёте внутренних противоречий и не вводит ли он бухгалтера в заблуждение.\n\nВерни отчёт в таком виде:\n- ИТОГ: СОВПАЛО / ЕСТЬ РАСХОЖДЕНИЯ\n- Таблица твоих расчётов по работам (work_id, price, paid, remaining)\n- Таблица по договорам (contract_id, payable, paid, remaining)\n- Итоги\n- Список найденных проблем (если есть) с указанием файла/строки и того, что должно быть вместо\n- Замечания по трактовке (не ошибки, а спорные места)\n\nПиши по-русски, кратко и по делу."
+}
+```
+
+**Результат инструмента:**
+
+```text
+started subagent agent-1
+```
+
+**Вызов инструмента `write`:**
+
+```json
+{
+  "content": "# Временные файлы тестов и кэш Python\n__pycache__/\n*.pyc\n.tmp-tests/\n.review-out/\n",
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\.gitignore"
+}
+```
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\.gitignore</path>
+<type>file</type>
+<content>
+Created file
+</content>
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Remove-Item -LiteralPath .tmp-tests -Recurse -Force -ErrorAction Stop; Write-Output \"удалено\"; Test-Path .tmp-tests",
+  "description": "Удалить каталог временных файлов тестов",
+  "sandbox_permissions": "danger-full-access",
+  "justification": "Каталог solution\\.tmp-tests содержит 34 брошенных каталога с ограниченными правами от ранних запусков тестов; убрать их из папки решения иначе нельзя, а они не должны попасть в репозиторий."
+}
+```
+
+**Результат инструмента:**
+
+```text
+удалено
+False
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python -m unittest discover -s tests 2>&1 | Select-Object -Last 4; echo \"--- остатки .tmp-tests:\"; if (Test-Path .tmp-tests) { (Get-ChildItem .tmp-tests | Measure-Object).Count } else { \"нет каталога\" }",
+  "description": "Финальный прогон тестов и проверка чистоты"
+}
+```
+
+**Результат инструмента:**
+
+```text
+--- остатки .tmp-tests:
+0
+[stderr]
+----------------------------------------------------------------------
+Ran 80 tests in 0.074s
+OK
+```
+
+**Ассистент:**
+
+Тесты: 80/80 OK, мусор убран. Готовлю локальный репозиторий (пуш — после отчёта ревьюера).
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; git init -b main 2>&1 | Select-Object -First 2; git add -A; Write-Output \"--- файлы к коммиту:\"; git status --short | Select-Object -First 40; Write-Output \"--- всего:\"; (git status --short | Measure-Object).Count",
+  "description": "Инициализировать git и посмотреть состав коммита"
+}
+```
+
+**Результат инструмента:**
+
+```text
+Initialized empty Git repository in C:/Users/User/Desktop/candidate-B/solution/.git/
+--- файлы к коммиту:
+A  .gitignore
+A  DECISIONS.md
+A  NOTES_TO_ACCOUNTANT.md
+A  README.md
+A  TRANSCRIPT.md
+A  advance_report/__init__.py
+A  advance_report/__main__.py
+A  advance_report/cli.py
+A  advance_report/engine.py
+A  advance_report/errors.py
+A  advance_report/formatting.py
+A  advance_report/loading.py
+A  advance_report/render.py
+A  out/contracts_2026-11-10.csv
+A  out/payments_2026-11-10.csv
+A  out/report_2026-11-10.json
+A  out/report_2026-11-10.md
+A  out/works_2026-11-10.csv
+A  report.py
+A  tests/support.py
+A  tests/test_cli.py
+A  tests/test_engine.py
+A  tests/test_formatting.py
+A  tests/test_loading.py
+A  tools/export_transcript.py
+--- всего:
+25
+[stderr]
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'DECISIONS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'NOTES_TO_ACCOUNTANT.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/__init__.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/__main__.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/cli.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/engine.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/errors.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/formatting.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/loading.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'advance_report/render.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'report.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/support.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_cli.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_engine.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_formatting.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_loading.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tools/export_transcript.py', LF will be replaced by CRLF the next time Git touches it
+```
+
+**Вызов инструмента `write`:**
+
+```json
+{
+  "content": "# Единый перевод строки в репозитории: файлы читаются одинаково на Windows и Linux.\n* text=auto eol=lf\n",
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\.gitattributes"
+}
+```
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\.gitattributes</path>
+<type>file</type>
+<content>
+Created file
+</content>
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution\nWrite-Output \"=== --help:\"; python report.py --help | Select-Object -First 12\nWrite-Output \"=== python -m advance_report:\"; python -m advance_report --date 2026-11-10 --format json --out .probe | Select-Object -First 2\nWrite-Output \"=== JSON (первые 22 строки):\"; Get-Content .probe\\report_2026-11-10.json -Encoding utf8 -TotalCount 22\nWrite-Output \"=== CSV contracts:\"; Get-Content out\\contracts_2026-11-10.csv -Encoding utf8",
+  "description": "Проверить CLI, JSON и CSV"
+}
+```
+
+**Результат инструмента:**
+
+```text
+=== --help:
+usage: report.py [-h] [--data DATA] [--date ГГГГ-ММ-ДД]
+                 [--format {console,md,csv,json,all}] [--out OUT]
+                 [--csv-delimiter CSV_DELIMITER] [--csv-dot] [--version]
+
+Отчёт по выгрузке из учёта: по каждой работе — цена, выплачено, осталось
+оплатить; по каждому договору — итоги.
+
+options:
+  -h, --help            show this help message and exit
+  --data DATA           каталог с contracts.csv, works.csv, payments.csv (по
+                        умолчанию C:\Users\User\Desktop\candidate-B\data)
+  --date, --as-of ГГГГ-ММ-ДД
+=== python -m advance_report:
+Записан .probe\report_2026-11-10.json
+=== JSON (первые 22 строки):
+{
+  "meta": {
+    "report": "выплаты по договорам и работам",
+    "as_of": "2026-11-10",
+    "currency": "RUB",
+    "data_dir": "C:\\Users\\User\\Desktop\\candidate-B\\data",
+    "note": "деньги — строки с двумя знаками; разделитель дробной части — точка"
+  },
+  "totals": {
+    "contracts": 2,
+    "works": 9,
+    "amount": "690000.00",
+    "works_total": "690000.00",
+    "cancelled_total": "100000.00",
+    "payable": "590000.00",
+    "accepted_total": "350000.00",
+    "accepted_paid": "350000.00",
+    "accepted_remaining": "0.00",
+    "advance_ahead": "40000.00",
+    "paid_total": "390000.00",
+    "remaining": "200000.00",
+    "overpaid": "0.00",
+=== CSV contracts:
+contract_id;contractor;signed_at;amount;works_total;cancelled_total;payable;accepted_total;accepted_paid;accepted_remaining;advance_ahead;paid_total;remaining;overpaid;queued_total;refunded_total;unallocated
+D-1;Студия «Свет»;2026-08-25;600000,00;600000,00;100000,00;500000,00;300000,00;300000,00;0,00;15000,00;315000,00;185000,00;0,00;150000,00;50000,00;0,00
+D-2;Иван Петров, дизайнер;2026-09-20;90000,00;90000,00;0,00;90000,00;50000,00;50000,00;0,00;25000,00;75000,00;15000,00;0,00;0,00;0,00;0,00
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Remove-Item .probe -Recurse -Force -ErrorAction SilentlyContinue; Write-Output \"=== works CSV:\"; Get-Content out\\works_2026-11-10.csv -Encoding utf8; Write-Output \"=== payments CSV:\"; Get-Content out\\payments_2026-11-10.csv -Encoding utf8 | Select-Object -First 4",
+  "description": "Посмотреть CSV работ и платежей"
+}
+```
+
+**Результат инструмента:**
+
+```text
+=== works CSV:
+contract_id;work_id;title;status_as_of;price;paid;paid_direct;paid_from_contract;remaining;overpay;note
+D-1;W-11;Съёмка: весенняя коллекция;выполнена;100000,00;100000,00;0,00;100000,00;0,00;0,00;
+D-1;W-12;Съёмка: лето;выполнена;100000,00;100000,00;0,00;100000,00;0,00;0,00;
+D-1;W-13;Съёмка: аксессуары;отменена;100000,00;0,00;0,00;0,00;0,00;0,00;отменена 12.10.2026 — оплате не подлежит
+D-1;W-14;Съёмка: осень;выполнена;100000,00;100000,00;15000,00;85000,00;0,00;0,00;
+D-1;W-15;Съёмка: зима;запланирована;100000,00;15000,00;0,00;15000,00;85000,00;0,00;
+D-1;W-16;Съёмка: новогодняя;запланирована;100000,00;0,00;0,00;0,00;100000,00;0,00;
+D-2;W-21;Логотип;выполнена;20000,00;20000,00;0,00;20000,00;0,00;0,00;
+D-2;W-22;Фирменный стиль;выполнена;30000,00;30000,00;0,00;30000,00;0,00;0,00;
+D-2;W-23;Упаковка;не принята на дату;40000,00;25000,00;0,00;25000,00;15000,00;0,00;принята 11.11.2026 — позже отчётной даты
+=== payments CSV:
+payment_id;contract_id;work_id;purpose;amount;status;included;paid_at;refunded_at;reason
+P-1;D-1;;Аванс 50%;300000,00;paid;да;2026-09-01;;оплачен 01.09.2026
+P-2;D-1;;Аванс, ошибочный платёж;50000,00;refunded;нет;2026-09-02;2026-09-10;оплачен 02.09.2026, возвращён 10.09.2026 — на отчётную дату денег у подрядчика нет
+P-3;D-1;W-14;Материалы для съёмки;15000,00;paid;да;2026-10-25;;оплачен 25.10.2026
+```
+
+**Вызов инструмента `list_agents`:**
+
+```json
+{}
+```
+
+**Результат инструмента:**
+
+```text
+lead [running] — root agent
+agent-1 [running] — Независимая проверка расчётов
+```
+
+**Ассистент:**
+
+Пока ревьюер считает, фиксирую коммит локально.
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; git add -A; git -c core.autocrlf=false commit -q -m \"Отчёт «аванс по договору»: программа, отчёт на 10.11.2026, решения, записка, транскрипт\" -m \"CLI на Python без внешних зависимостей: состояние работ и платежей восстанавливается на отчётную дату, непривязанные платежи распределяются по порядку приёмки, деньги считаются в Decimal до копейки. В out/ готовый отчёт на 10.11.2026 (Markdown, три CSV, JSON). DECISIONS.md — 15 решений с вариантами и последствиями, NOTES_TO_ACCOUNTANT.md — записка, tests/ — 80 тестов, TRANSCRIPT.md — экспорт журнала работы.\"; git log --oneline; git status --short | Measure-Object | Select-Object Count",
+  "description": "Создать первый коммит"
+}
+```
+
+**Результат инструмента:**
+
+```text
+a910ffb Отчёт «аванс по договору»: программа, отчёт на 10.11.2026, решения, записка, транскрипт
+
+Count
+-----
+    0
+
+
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Write-Output \"=== хвост транскрипта:\"; Get-Content TRANSCRIPT.md -Encoding utf8 -Tail 12; Write-Output \"=== статистика:\"; $t = Get-Content TRANSCRIPT.md -Encoding utf8; \"строк: $($t.Count)\"; \"вызовов инструментов: $(($t | Select-String 'Вызов инструмента').Count)\"; \"результатов: $(($t | Select-String 'Результат инструмента').Count)\"",
+  "description": "Проверить транскрипт"
+}
+```
+
+**Результат инструмента:**
+
+````text
+=== хвост транскрипта:
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\tools\export_transcript.py has been updated successfully.
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python tools/export_transcript.py --workspace C:\\Users\\User\\Desktop\\candidate-B --out TRANSCRIPT.md; python -c \"import pathlib; t=pathlib.Path('TRANSCRIPT.md').read_text(encoding='utf-8'); print('строк:', len(t.splitlines())); print('system-reminder:', t.count('system-reminder'))\"",
+  "description": "Пересобрать транскрипт и проверить"
+}
+```
+=== статистика:
+строк: 3165
+вызовов инструментов: 89
+результатов: 88
+````
+
+**Вызов инструмента `wait_agent`:**
+
+```json
+{
+  "timeout_ms": 180000
+}
+```
+
+**Результат инструмента:**
+
+```text
+{"timedOut":false}
+```
+
+## Пользователь
+
+Background subagent agent-1 finished and will do no further work unless you send it more.
+
+Its closing message:
+
+## ИТОГ: СОВПАЛО
+
+Независимый пересчёт по CSV (сделан отдельно от кода программы, средствами PowerShell + `decimal`) полностью совпал с `.review-out\report_2026-11-10.json` по всем 9 работам, 2 договорам и итогам. Команда отработала с кодом 0; свежий JSON **байт-в-байт** идентичен ранее лежавшему `out\report_2026-11-10.json` (SHA-256 `69B4C5…FBA33`) — расчёт воспроизводим.
+
+**Как проверял:** (1) свой расчёт статусов/платежей по датам `<= 10.11.2026`; (2) своё распределение «котла» по правилу 4; (3) арифметику каждой строки JSON, суммы по договорам, итоги; (4) сверку «источники платежа == сумма платежа» для всех 8 платежей; (5) чтение `engine.py`/`loading.py` на предмет граничных условий дат (все сравнения включительные, `refunded_at <= as_of` исключает, `paid_at > as_of` исключает).
+
+### Работы
+
+| work_id | price | paid | remaining |
+|---|---:|---:|---:|
+| W-11 | 100 000,00 | 100 000,00 | 0,00 |
+| W-12 | 100 000,00 | 100 000,00 | 0,00 |
+| W-13 (отменена 12.10) | 100 000,00 | 0,00 | 0,00 |
+| W-14 (15 000 прямой P-3 + 85 000 из P-1) | 100 000,00 | 100 000,00 | 0,00 |
+| W-15 (запланирована) | 100 000,00 | 15 000,00 | 85 000,00 |
+| W-16 (запланирована) | 100 000,00 | 0,00 | 100 000,00 |
+| W-21 | 20 000,00 | 20 000,00 | 0,00 |
+| W-22 | 30 000,00 | 30 000,00 | 0,00 |
+| W-23 (принята 11.11) | 40 000,00 | 25 000,00 | 15 000,00 |
+| **Σ** | **690 000,00** | **390 000,00** | **200 000,00** |
+
+Распределение: P-1 (300 000) → W-11 100 000 → W-12 100 000 → W-14 85 000 → W-15 15 000; P-5/P-6/P-7 (75 000) → W-21 20 000 → W-22 30 000 → W-23 25 000. Нераспределённого остатка нет (0,00).
+
+### Договоры
+
+| contract_id | payable | paid | remaining |
+|---|---:|---:|---:|
+| D-1 | 500 000,00 | 315 000,00 | 185 000,00 |
+| D-2 | 90 000,00 | 75 000,00 | 15 000,00 |
+| **Σ** | **590 000,00** | **390 000,00** | **200 000,00** |
+
+### Итоги и арифметические сверки
+
+- К оплате 590 000,00 = 690 000,00 − 100 000,00 (W-13). Выплачено 390 000,00. Остаток 200 000,00.
+- `paid_total` 390 000,00 = сумма по работам 390 000,00 + unallocated 0,00 ✔
+- Сумма остатков по работам 200 000,00 = `totals.remaining` 200 000,00 ✔ (по каждому договору тоже: 185 000 и 15 000 ✔)
+- `accepted_total` 350 000,00, `accepted_paid` 350 000,00, `accepted_remaining` 0,00, `advance_ahead` 40 000,00 = 390 000 − 350 000 ✔
+- Все 9 строк: `remaining = max(0, price − paid)`, для W-13 — 0 ✔. Сумма `sources` = `paid` в каждой строке ✔. Разложение включённых платежей ровно на их суммы: P-1 100+100+85+15=300 тыс.; P-5 20+25=45; P-6 5+20=25; P-7 5 ✔
+- `queued_total` 150 000,00 (P-4), `refunded_total` 50 000,00 (P-2), `overpaid` 0,00 — согласованы с данными.
+
+### Краевые случаи
+
+| Случай | Что в отчёте | Верно? |
+|---|---|---|
+| P-2 возврат 10.09 | `included:false`, `state:refunded`, в выплаты не входит (иначе D-1 было бы 365 000 / остаток 135 000) | ✔ |
+| P-4 очередь | `included:false`, `queued_total` 150 000 показан отдельно (иначе 465 000 / 35 000) | ✔ |
+| P-8 оплачен 12.11 | `state:after`, `included:false`; в `after_date` спрогнозировано 95 000 / переплата 5 000 | ✔ |
+| W-23 принята 11.11 | статус на дату «не принята», price в `payable` 40 000, в `accepted_total` не входит, paid 25 000 | ✔ |
+| W-13 отменена 12.10 | `payable` 0, денег не получила, `cancelled_total` 100 000 вычтен из payable | ✔ |
+
+### Список найденных проблем
+
+**Расхождений в цифрах нет.** Формальных дефектов, влияющих на суммы, тоже нет. Есть три замечания к оформлению (цифры при этом верны):
+
+1. `works[].status` в JSON — производный статус; для W-23 значение `pending` отсутствует в справочнике статусов [FORMAT.md](data/FORMAT.md), а исходное `done` нигде не сохранено. При этом у платежей есть и `status`, и `state`, а CSV-выгрузка той же программы называет колонку `status_as_of` ([works_2026-11-10.csv](solution/out/works_2026-11-10.csv)). Должно быть согласованно: `status_as_of` + `status_source` (или переименовать поле в JSON), иначе потребитель прочитает `pending` как новый статус выгрузки — [report_2026-11-10.json](solution/.review-out/report_2026-11-10.json#L246).
+2. У W-15 (запланирована) `paid` 15 000 при пустом `note` ([строка 175](solution/.review-out/report_2026-11-10.json#L175)). Строка читается как «заплатили за невыполненную работу». Должно быть: примечание «аванс, перенесённый с P-1 по правилу 4» — как это уже сделано для W-13 и W-23.
+3. В `checks` формулировка «к оплате 500 000,00 = принято 300 000,00 + не принято 200 000,00» ([строка 394](solution/.review-out/report_2026-11-10.json#L394)): «не принято» здесь не включает отменённую W-13 (100 000). Формально верно, но читается как «все непринятые работы». Лучше: «не принято (без отменённых)».
+
+### Замечания по трактовке (не ошибки)
+
+1. **Ёмкость работы уменьшена на прямой платёж.** P-1 закрывает W-14 только на 85 000 (15 000 уже пришло по P-3), а остаток 15 000 уходит на W-15. Альтернативное чтение правила 4 — залить W-14 полностью (100 000 из P-1, итого 115 000, переплата 15 000) и оставить W-15 без денег. **Итоги по договору не меняются** (315 000 / 185 000), меняется только разбивка. Выбранный вариант лучше тем, что сохраняет равенство «Σ остатков по работам = остаток по договору»; правило 4 этого явно не оговаривает.
+2. **«Осталось оплатить 185 000» по D-1 — это не долг.** Это W-15 85 000 + W-16 100 000, ещё не выполненные. То же по D-2: 15 000 относятся к W-23, принятой 11.11. Отчёт это раскрывает (`accepted_remaining` 0,00, `advance_ahead`), но в итоговой строке соседства с пометкой «долг по принятым 0,00» нет.
+3. **Очередь не уменьшает остаток.** С учётом P-4 (150 000) чистая потребность в деньгах — 50 000 (200 000 − 150 000), а не 200 000. Поле `queued_total` присутствует в тех же строках, но такой сверки в `checks` нет.
+4. **Аванс на ещё не принятую работу.** W-23 получила 25 000 до приёмки — это прямо следует из порядка правила 4 («ожидающие приёмки» раньше «запланированных»), но бухгалтер может этого не ожидать; пояснение в `note` есть, в суммовой части — нет.
+5. `refunded_total` 50 000 показан, но в арифметике нигде не участвует (P-2 просто исключён) — это нормально, просто информационное поле.
+
+Файлы не изменялись; создан только каталог `.review-out` самой командой, как и предполагалось.
+
+**Ассистент:**
+
+Ревьюер подтвердил: **все цифры совпали** (независимый пересчёт + байтовая воспроизводимость), расхождений нет. Внёс три его замечания по оформлению — они полезные.
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "new_string": "@dataclass(frozen=True)\nclass WorkRow:\n    \"\"\"Строка отчёта по работе.\"\"\"\n\n    contract_id: str\n    work_id: str\n    title: str\n    status: str\n    source_status: str\n    status_label: str\n    price: Decimal\n    payable: Decimal\n    paid: Decimal\n    paid_direct: Decimal\n    paid_from_contract: Decimal\n    remaining: Decimal\n    overpay: Decimal\n    sources: tuple[tuple[str, Decimal, str], ...]\n    note: str",
+  "old_string": "@dataclass(frozen=True)\nclass WorkRow:\n    \"\"\"Строка отчёта по работе.\"\"\"\n\n    contract_id: str\n    work_id: str\n    title: str\n    status: str\n    status_label: str\n    price: Decimal\n    payable: Decimal\n    paid: Decimal\n    paid_direct: Decimal\n    paid_from_contract: Decimal\n    remaining: Decimal\n    overpay: Decimal\n    sources: tuple[tuple[str, Decimal, str], ...]\n    note: str"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py has been updated successfully.
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "new_string": "def _work_note(status: str, work: Work, overpay: Decimal, paid: Decimal) -> str:\n    \"\"\"Пояснение к строке работы: почему сумма такая, а не иная.\"\"\"\n    parts: list[str] = []\n    if status == CANCELLED:\n        parts.append(f\"отменена {fmt_date(work.cancelled_at)} — оплате не подлежит\")\n    elif status == PENDING:\n        parts.append(f\"принята {fmt_date(work.completed_at)} — позже отчётной даты\")\n    if status in (PLANNED, PENDING) and paid > ZERO:\n        # Деньги ушли вперёд приёмки: без пояснения строка читается как\n        # «заплатили за невыполненную работу».\n        parts.append(f\"аванс вперёд приёмки {fmt_ru(paid)}\")\n    if overpay > ZERO:\n        parts.append(f\"переплата {fmt_ru(overpay)}\")\n    return \"; \".join(parts)",
+  "old_string": "def _work_note(status: str, work: Work, overpay: Decimal) -> str:\n    parts: list[str] = []\n    if status == CANCELLED:\n        parts.append(f\"отменена {fmt_date(work.cancelled_at)} — оплате не подлежит\")\n    elif status == PENDING:\n        parts.append(f\"принята {fmt_date(work.completed_at)} — позже отчётной даты\")\n    if overpay > ZERO:\n        parts.append(f\"переплата {fmt_ru(overpay)}\")\n    return \"; \".join(parts)"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py has been updated successfully.
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "new_string": "                    status=status,\n                    source_status=work.status,\n                    status_label=WORK_STATUS_LABELS[status],",
+  "old_string": "                    status=status,\n                    status_label=WORK_STATUS_LABELS[status],"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py has been updated successfully.
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "new_string": "                    sources=tuple(source_map[work.work_id]),\n                    note=_work_note(status, work, overpay, paid_amount),",
+  "old_string": "                    sources=tuple(source_map[work.work_id]),\n                    note=_work_note(status, work, overpay),"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py has been updated successfully.
+```
+
+**Вызов инструмента `read`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "limit": 40,
+  "offset": 545
+}
+```
+
+**Результат инструмента:**
+
+```text
+<path>C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py</path>
+<type>file</type>
+<content>
+545:         "payable",
+546:         "accepted_total",
+547:         "paid_total",
+548:         "remaining",
+549:         "overpaid",
+550:         "queued_total",
+551:     ):
+552:         expected = sum((getattr(row, attr) for row in contracts), ZERO)
+553:         if getattr(totals, attr) != expected:
+554:             raise InternalError(f"итог {attr} не равен сумме по договорам")
+555: 
+556:     works_paid = sum((row.paid for row in works), ZERO)
+557:     if works_paid != totals.paid_total - totals.unallocated:
+558:         raise InternalError(
+559:             f"выплачено по работам {fmt_ru(works_paid)} не сходится с выплачено по договорам "
+560:             f"{fmt_ru(totals.paid_total)} минус нераспределённое {fmt_ru(totals.unallocated)}"
+561:         )
+562:     return totals
+563: 
+564: 
+565: def _checks(contracts: list[ContractRow], totals: Totals) -> list[str]:
+566:     """Строки сверки: бухгалтер может проверить их руками."""
+567:     checks: list[str] = []
+568: 
+569:     for row in contracts:
+570:         allocated = row.paid_total - row.unallocated
+571:         checks.append(
+572:             f"{row.contract_id}: выплачено {fmt_ru(row.paid_total)} = "
+573:             f"по работам {fmt_ru(allocated)} + не распределено {fmt_ru(row.unallocated)}"
+574:         )
+575:         checks.append(
+576:             f"{row.contract_id}: к оплате {fmt_ru(row.payable)} = "
+577:             f"принято {fmt_ru(row.accepted_total)} + не принято {fmt_ru(row.payable - row.accepted_total)}"
+578:         )
+579:         checks.append(
+580:             f"{row.contract_id}: долг по принятым работам {fmt_ru(row.accepted_remaining)}, "
+581:             f"аванс сверх принятого {fmt_ru(row.advance_ahead)}"
+582:         )
+583: 
+584:     checks.append(
+
+(Showing lines 545-584 of 603. Use offset=585 to continue.)
+</content>
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\engine.py",
+  "new_string": "        checks.append(\n            f\"{row.contract_id}: к оплате {fmt_ru(row.payable)} = \"\n            f\"принято {fmt_ru(row.accepted_total)} + не принято \"\n            f\"(без отменённых) {fmt_ru(row.payable - row.accepted_total)}\"\n        )\n        checks.append(\n            f\"{row.contract_id}: долг по принятым работам {fmt_ru(row.accepted_remaining)}, \"\n            f\"аванс сверх принятого {fmt_ru(row.advance_ahead)}\"\n        )\n        if row.queued_total > ZERO:\n            # Платёж в очереди ещё не ушёл, но деньги на него уже зарезервированы:\n            # бухгалтеру важнее «сколько останется после очереди», чем валовой остаток.\n            after_queue = max(ZERO, row.remaining - row.queued_total)\n            checks.append(\n                f\"{row.contract_id}: в очереди {fmt_ru(row.queued_total)}, \"\n                f\"после её оплаты останется {fmt_ru(after_queue)}\"\n            )",
+  "old_string": "        checks.append(\n            f\"{row.contract_id}: к оплате {fmt_ru(row.payable)} = \"\n            f\"принято {fmt_ru(row.accepted_total)} + не принято {fmt_ru(row.payable - row.accepted_total)}\"\n        )\n        checks.append(\n            f\"{row.contract_id}: долг по принятым работам {fmt_ru(row.accepted_remaining)}, \"\n            f\"аванс сверх принятого {fmt_ru(row.advance_ahead)}\"\n        )"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\engine.py has been updated successfully.
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\advance_report\\render.py",
+  "new_string": "def _work_dict(row: WorkRow) -> dict[str, object]:\n    return {\n        \"contract_id\": row.contract_id,\n        \"work_id\": row.work_id,\n        \"title\": row.title,\n        # status_as_of — производный статус на отчётную дату; status_source —\n        # то, что стоит в выгрузке. Разделены, чтобы потребитель не принял\n        # «pending» за новый статус исходного формата.\n        \"status_as_of\": row.status,\n        \"status_source\": row.source_status,\n        \"status_label\": row.status_label,",
+  "old_string": "def _work_dict(row: WorkRow) -> dict[str, object]:\n    return {\n        \"contract_id\": row.contract_id,\n        \"work_id\": row.work_id,\n        \"title\": row.title,\n        \"status\": row.status,\n        \"status_label\": row.status_label,"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\advance_report\render.py has been updated successfully.
+```
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\tests\\test_engine.py",
+  "new_string": "    def test_work_accepted_after_report_date(self) -> None:\n        row = self.works[\"W-23\"]\n        self.assertEqual(row.status, PENDING)\n        self.assertIn(\"11.11.2026\", row.note)\n\n    def test_source_status_is_kept(self) -> None:\n        \"\"\"Исходный статус выгрузки сохраняется рядом с производным статусом на дату.\"\"\"\n        self.assertEqual(self.works[\"W-23\"].source_status, \"done\")\n        self.assertEqual(self.works[\"W-13\"].source_status, \"cancelled\")\n\n    def test_advance_note_on_planned_work(self) -> None:\n        \"\"\"У запланированной работы с деньгами есть пояснение, откуда аванс.\"\"\"\n        self.assertIn(\"аванс вперёд приёмки\", self.works[\"W-15\"].note)\n        self.assertEqual(self.works[\"W-16\"].note, \"\")\n\n    def test_queue_check_line(self) -> None:\n        text = \"\\n\".join(self.report.checks)\n        self.assertIn(\"в очереди 150 000,00\", text)\n        self.assertIn(\"останется 35 000,00\", text)",
+  "old_string": "    def test_work_accepted_after_report_date(self) -> None:\n        row = self.works[\"W-23\"]\n        self.assertEqual(row.status, PENDING)\n        self.assertIn(\"11.11.2026\", row.note)"
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\tests\test_engine.py has been updated successfully.
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; python -m unittest discover -s tests 2>&1 | Select-Object -Last 4; python report.py --date 2026-11-10 --format all --out out",
+  "description": "Прогнать тесты и пересобрать отчёт"
+}
+```
+
+**Результат инструмента:**
+
+```text
+Записан out\report_2026-11-10.md
+Записан out\works_2026-11-10.csv
+Записан out\contracts_2026-11-10.csv
+Записан out\payments_2026-11-10.csv
+Записан out\report_2026-11-10.json
+[stderr]
+----------------------------------------------------------------------
+Ran 83 tests in 0.076s
+OK
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Write-Output \"=== md: работы W-15 и проверки:\"; Select-String -Path out\\report_2026-11-10.md -Pattern \"W-15|в очереди 150|без отменённых\" | Select-Object -First 4 -ExpandProperty Line; Write-Output \"=== json: поля работы W-23:\"; python -c \"import json; d=json.load(open('out/report_2026-11-10.json',encoding='utf-8')); w=[x for x in d['works'] if x['work_id']=='W-23'][0]; print({k:w[k] for k in ('work_id','status_as_of','status_source','status_label','paid','remaining','note')})\"",
+  "description": "Проверить новые поля и примечания"
+}
+```
+
+**Результат инструмента:**
+
+```text
+=== md: работы W-15 и проверки:
+| D-1 | W-15 | Съёмка: зима | запланирована | 100 000,00 | 15 000,00 | 85 000,00 | аванс вперёд приёмки 15 000,00 |
+| W-15 | 100 000,00 | 15 000,00 | P-1: 15 000,00 (из платежа по договору) |
+- D-1: к оплате 500 000,00 = принято 300 000,00 + не принято (без отменённых) 200 000,00
+- D-1: в очереди 150 000,00, после её оплаты останется 35 000,00
+=== json: поля работы W-23:
+{'work_id': 'W-23', 'status_as_of': 'pending', 'status_source': 'done', 'status_label': '�� ������� �� ����', 'paid': '25000.00', 'remaining': '15000.00', 'note': '������� 11.11.2026 � ����� �������� ����; ����� ����� ������ 25 000,00'}
+```
+
+## Пользователь
+
+Time sampled while preparing turn 1, step 85: 2026-11-15T21:50:20+03:00[Europe/Moscow]
+Browser time zone for this request: Europe/Moscow. Interpret otherwise-unqualified dates and times in this zone.
+Elapsed since the preceding step context: 10m 3s.
+
+**Вызов инструмента `edit`:**
+
+```json
+{
+  "file_path": "C:\\Users\\User\\Desktop\\candidate-B\\solution\\README.md",
+  "new_string": "83 теста: разбор сумм и дат, проверки загрузки (битые статусы, чужие ссылки, возвраты),\nрасчёт на реальной выгрузке с эталонными цифрами, граничные случаи (переплата, пустой\nдоговор, копейки), CLI (коды возврата, форматы, побайтовая повторяемость).",
+  "old_string": "80 тестов: разбор сумм и дат, проверки загрузки (битые статусы, чужие ссылки, возвраты),\nрасчёт на реальной выгрузке с эталонными цифрами, граничные случаи (переплата, пустой\nдоговор, копейки), CLI (коды возврата, форматы, побайтовая повторяемость)."
+}
+```
+
+**Результат инструмента:**
+
+```text
+The file C:\Users\User\Desktop\candidate-B\solution\README.md has been updated successfully.
+```
+
+**Вызов инструмента `pwsh`:**
+
+```json
+{
+  "command": "cd C:\\Users\\User\\Desktop\\candidate-B\\solution; Remove-Item .review-out -Recurse -Force -ErrorAction SilentlyContinue; Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; python tools/export_transcript.py --workspace C:\\Users\\User\\Desktop\\candidate-B --out TRANSCRIPT.md; git status --short | Select-Object -First 15",
+  "description": "Убрать мусор, обновить транскрипт"
 }
 ```

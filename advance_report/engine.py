@@ -207,6 +207,7 @@ class WorkRow:
     work_id: str
     title: str
     status: str
+    source_status: str
     status_label: str
     price: Decimal
     payable: Decimal
@@ -297,12 +298,17 @@ class Report:
     after_date: tuple[str, ...]
 
 
-def _work_note(status: str, work: Work, overpay: Decimal) -> str:
+def _work_note(status: str, work: Work, overpay: Decimal, paid: Decimal) -> str:
+    """Пояснение к строке работы: почему сумма такая, а не иная."""
     parts: list[str] = []
     if status == CANCELLED:
         parts.append(f"отменена {fmt_date(work.cancelled_at)} — оплате не подлежит")
     elif status == PENDING:
         parts.append(f"принята {fmt_date(work.completed_at)} — позже отчётной даты")
+    if status in (PLANNED, PENDING) and paid > ZERO:
+        # Деньги ушли вперёд приёмки: без пояснения строка читается как
+        # «заплатили за невыполненную работу».
+        parts.append(f"аванс вперёд приёмки {fmt_ru(paid)}")
     if overpay > ZERO:
         parts.append(f"переплата {fmt_ru(overpay)}")
     return "; ".join(parts)
@@ -387,6 +393,7 @@ def build_report(dataset: Dataset, as_of: date) -> Report:
                     work_id=work.work_id,
                     title=work.title,
                     status=status,
+                    source_status=work.status,
                     status_label=WORK_STATUS_LABELS[status],
                     price=work.price,
                     payable=payable,
@@ -396,7 +403,7 @@ def build_report(dataset: Dataset, as_of: date) -> Report:
                     remaining=remaining,
                     overpay=overpay,
                     sources=tuple(source_map[work.work_id]),
-                    note=_work_note(status, work, overpay),
+                    note=_work_note(status, work, overpay, paid_amount),
                 )
             )
 
@@ -567,12 +574,21 @@ def _checks(contracts: list[ContractRow], totals: Totals) -> list[str]:
         )
         checks.append(
             f"{row.contract_id}: к оплате {fmt_ru(row.payable)} = "
-            f"принято {fmt_ru(row.accepted_total)} + не принято {fmt_ru(row.payable - row.accepted_total)}"
+            f"принято {fmt_ru(row.accepted_total)} + не принято "
+            f"(без отменённых) {fmt_ru(row.payable - row.accepted_total)}"
         )
         checks.append(
             f"{row.contract_id}: долг по принятым работам {fmt_ru(row.accepted_remaining)}, "
             f"аванс сверх принятого {fmt_ru(row.advance_ahead)}"
         )
+        if row.queued_total > ZERO:
+            # Платёж в очереди ещё не ушёл, но деньги на него уже зарезервированы:
+            # бухгалтеру важнее «сколько останется после очереди», чем валовой остаток.
+            after_queue = max(ZERO, row.remaining - row.queued_total)
+            checks.append(
+                f"{row.contract_id}: в очереди {fmt_ru(row.queued_total)}, "
+                f"после её оплаты останется {fmt_ru(after_queue)}"
+            )
 
     checks.append(
         f"Итого: договоров {totals.contracts}, работ {totals.works}; "

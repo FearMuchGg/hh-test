@@ -350,7 +350,11 @@ def _work_dict(row: WorkRow) -> dict[str, object]:
         "contract_id": row.contract_id,
         "work_id": row.work_id,
         "title": row.title,
-        "status": row.status,
+        # status_as_of — производный статус на отчётную дату; status_source —
+        # то, что стоит в выгрузке. Разделены, чтобы потребитель не принял
+        # «pending» за новый статус исходного формата.
+        "status_as_of": row.status,
+        "status_source": row.source_status,
         "status_label": row.status_label,
         "price": _money_json(row.price),
         "payable": _money_json(row.payable),

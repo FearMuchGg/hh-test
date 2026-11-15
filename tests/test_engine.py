@@ -74,6 +74,21 @@ class RealDataTests(unittest.TestCase):
         self.assertEqual(row.status, PENDING)
         self.assertIn("11.11.2026", row.note)
 
+    def test_source_status_is_kept(self) -> None:
+        """Исходный статус выгрузки сохраняется рядом с производным статусом на дату."""
+        self.assertEqual(self.works["W-23"].source_status, "done")
+        self.assertEqual(self.works["W-13"].source_status, "cancelled")
+
+    def test_advance_note_on_planned_work(self) -> None:
+        """У запланированной работы с деньгами есть пояснение, откуда аванс."""
+        self.assertIn("аванс вперёд приёмки", self.works["W-15"].note)
+        self.assertEqual(self.works["W-16"].note, "")
+
+    def test_queue_check_line(self) -> None:
+        text = "\n".join(self.report.checks)
+        self.assertIn("в очереди 150 000,00", text)
+        self.assertIn("останется 35 000,00", text)
+
     def test_contracts(self) -> None:
         d1 = self.contracts["D-1"]
         self.assertEqual(d1.amount, Decimal("600000.00"))
