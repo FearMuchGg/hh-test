@@ -1,0 +1,5 @@
+# Временные файлы тестов и кэш Python
+__pycache__/
+*.pyc
+.tmp-tests/
+.review-out/
